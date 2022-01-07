@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 
-#include "nda.h"
+#include "util.h"
+#include "automata.h"
 
 enum { FALSE, TRUE };
 
@@ -23,13 +23,11 @@ struct Regex {
     int max; // used by REGEX_REPEAT
 };
 
-NDA regex_to_nda (Regex regex);
-int aux_length_regex_to_nda (Regex regex);
-Node * aux_regex_to_nda (Regex regex, NDA * nda, Node * start_node);
+Automata regex_to_automata (Regex regex);
+int aux_length_regex_to_automata (Regex regex);
+Node * aux_regex_to_automata (Regex regex, Automata * automata, Node * start_node);
 
 char * regex_to_string (Regex regex);
-int aux_length_regex_to_string (Regex regex);
-int aux_regex_to_string (Regex regex, char * result_string);
 
 int main (char ** argv) {
 
@@ -52,173 +50,162 @@ int main (char ** argv) {
     regex3.max = 3;
     regex3.one = &regex2;
 
-    printf("%i\n", aux_length_regex_to_string(regex3));
     char * string_regex = regex_to_string(regex3);
-    printf("%s\n", string_regex);
+    printf("%s\n\n", string_regex);
     free(string_regex);
 
-	NDA nda = regex_to_nda(regex3);
-	printf("%i %i\n", nda.nb_nodes, nda.nodes[0].nb_arrows);
-}
+    Automata automata = regex_to_automata(regex3);
 
+    char * string_automata = automata_to_string(automata);
+    printf("%s\n", string_automata);
+    free(string_automata);
 
-NDA regex_to_nda (Regex regex) {
+    int labels[] = { 12, 4000, 12, 4000, 12, 4000, 12, 4000 };
+    Pipe success_walks = all_success_walks(automata, 0, 8, labels);
 
-	int nb_nodes = aux_length_regex_to_nda(regex);
+    int longest_nb_labels_used = 0;
+	int longest_walk_node_num = 0;
 
-	NDA nda = create_NDA(nb_nodes, 0); // TODO compute nb of counters
-
-	Node * init_node = add_Node(&nda, FALSE, 2);
-
-	aux_regex_to_nda(regex, &nda, init_node);
-
-	return nda;
-}
-
-int aux_length_regex_to_nda (Regex regex) {
-    int result_length, result_one, result_two;
-	switch (regex.tag_regex) {
-		case REGEX_EPSILON:
-		case REGEX_CHARACTER:
-			// two nodes with an arrow
-			// (0)--a-->(1)
-			result_length = 2;
-			break;
-		case REGEX_SEQUENCE:
-		case REGEX_BRANCH:
-			result_one = aux_length_regex_to_nda(*regex.one);
-			result_two = aux_length_regex_to_nda(*regex.two);
-			result_length = result_one + result_two;
-		    if (regex.tag_regex == REGEX_SEQUENCE) result_length --;
-			break;
-        case REGEX_REPEAT:
-            result_one = aux_length_regex_to_nda(*regex.one);
-            result_length = result_one + 4;
-            break;
+	while (success_walks.length > 0) {
+		Walk walk = pop(&success_walks);
+		if (walk.nb_labels_used > longest_nb_labels_used) {
+			longest_nb_labels_used = walk.nb_labels_used;
+			longest_walk_node_num = walk.node->num;
+		}
+		free_walk(walk);
 	}
-	return result_length;
-}
 
-Node * aux_regex_to_nda (Regex regex, NDA * nda, Node * start_node) {
-	Node * end_node, * node_one, * node_two, * node_three;
-    Arrow * arrow;
-	switch (regex.tag_regex) {
-		case REGEX_EPSILON:
-		case REGEX_CHARACTER:
-			// wet set arrow capacity to 2 because we will never need more than 2 arrows
-			// we choose to allocate largest possible, rather than to allocate often
-			end_node = add_Node(nda, TRUE, 2);
-			add_arrow(start_node, regex.character, end_node->num, 0);
-			break;
-		case REGEX_SEQUENCE:
-			node_one = aux_regex_to_nda(*regex.one, nda, start_node);
-            end_node = aux_regex_to_nda(*regex.two, nda, node_one);
-			node_one->success = FALSE;
-			break;
-		case REGEX_BRANCH:
-			node_one = aux_regex_to_nda(*regex.one, nda, start_node);
-			node_two = aux_regex_to_nda(*regex.two, nda, start_node);
-            end_node = add_Node(nda, TRUE, 2);
-			node_one->success = FALSE;
-			node_two->success = FALSE;
-			add_arrow(node_one, REGEX_EPSILON, end_node->num, 0);
-			add_arrow(node_two, REGEX_EPSILON, end_node->num, 0);
-            break;
-        case REGEX_REPEAT:
-            node_one = add_Node(nda, FALSE, 2);
-            node_two = add_Node(nda, FALSE, 1);
-            node_three = aux_regex_to_nda(*regex.one, nda, node_two);
-            end_node = add_Node(nda, TRUE, 2);
+    printf("%i labels used, landed in node %i\n", longest_nb_labels_used, longest_walk_node_num);
 
-            node_three->success = FALSE;
-
-            arrow = add_arrow(start_node, REGEX_EPSILON, node_one->num, 1);
-            arrow->counters_actions[0] = new_counter_action(0, ACTION_SET, 0);
-
-            arrow = add_arrow(node_one, REGEX_EPSILON, node_two->num, 1);
-            // regex.max - 1, because that AT_MOST is inclusive
-            // we must not follow the arrow if we already reached regex.max
-            arrow->counters_actions[0] = new_counter_action(0, ACTION_AT_MOST, regex.max - 1);
-
-            arrow = add_arrow(node_three, REGEX_EPSILON, node_one->num, 1);
-            arrow->counters_actions[0] = new_counter_action(0, ACTION_ADD, 1);
-
-            arrow = add_arrow(node_one, REGEX_EPSILON, end_node->num, 2);
-            arrow->counters_actions[0] = new_counter_action(0, ACTION_AT_LEAST, regex.min);
-            arrow->counters_actions[1] = new_counter_action(0, ACTION_AT_MOST, regex.max);
-            break;
-	}
-	return end_node;
-}
-
-char * regex_to_string (Regex regex) {
-    int string_length = aux_length_regex_to_string(regex);
-    char * string_regex = malloc(1 + string_length * sizeof(char));
-    aux_regex_to_string(regex, string_regex);
-    strcpy(string_regex + string_length, "\0");
-    return string_regex;
+    free_automata(automata);
 }
 
 
-// compute the length necessary to store the string
-int aux_length_regex_to_string (Regex regex) {
-    char buffer[100];
+Automata regex_to_automata (Regex regex) {
+
+    int nb_nodes = aux_length_regex_to_automata(regex);
+
+    Automata automata = new_automata(nb_nodes, 1); // TODO compute nb of counters
+
+    Node * init_node = add_node(&automata, FALSE, 2);
+
+    aux_regex_to_automata(regex, &automata, init_node);
+
+    return automata;
+}
+
+int aux_length_regex_to_automata (Regex regex) {
     int result_length, result_one, result_two;
     switch (regex.tag_regex) {
         case REGEX_EPSILON:
-            // number of characters in string "EPS"
-            result_length = 3;
-            break;
         case REGEX_CHARACTER:
-            result_length = sprintf(buffer, "%i", regex.character);
-            break;
+            // two nodes with an arrow
+            // (0)--a-->(1)
+            result_length = 2;
+        break;
         case REGEX_SEQUENCE:
-            // sum of the lengths of the two branches + 1 for symbol '.'
-            result_one = aux_length_regex_to_string(*regex.one);
-            result_two = aux_length_regex_to_string(*regex.two);
-            result_length = result_one + result_two + 1;
-            break;
         case REGEX_BRANCH:
-            // sum of the lengths of the two branches + 3 for symbosl '|' and '(' and ')'
-            result_one = aux_length_regex_to_string(*regex.one);
-            result_two = aux_length_regex_to_string(*regex.two);
-            result_length = result_one + result_two + 3;
-            break;
-        case REGEX_REPEAT:
-            result_one = aux_length_regex_to_string(*regex.one);
-            result_two = sprintf(buffer, "(){%i,%i}", regex.min, regex.max);
+            result_one = aux_length_regex_to_automata(*regex.one);
+            result_two = aux_length_regex_to_automata(*regex.two);
             result_length = result_one + result_two;
-            break;
+            if (regex.tag_regex == REGEX_SEQUENCE) result_length --;
+        break;
+        case REGEX_REPEAT:
+            result_one = aux_length_regex_to_automata(*regex.one);
+            result_length = result_one + 4;
+        break;
     }
     return result_length;
 }
 
-int aux_regex_to_string (Regex regex, char * result_string) {
-    int nb_written = 0;
+Node * aux_regex_to_automata (Regex regex, Automata * automata, Node * start_node) {
+    Node * end_node, * node_one, * node_two, * node_three;
+    Arrow * arrow;
     switch (regex.tag_regex) {
         case REGEX_EPSILON:
-            nb_written += sprintf(result_string + nb_written, "EPS");
-            break;
+            end_node = add_node(automata, TRUE, 2);
+            add_arrow(start_node, LABEL_EPSILON, end_node->num, 0);
+        break;
         case REGEX_CHARACTER:
-            nb_written += sprintf(result_string + nb_written, "%i", regex.character);
-            break;
+            // wet set arrow capacity to 2 because we will never need more than 2 arrows
+            // we choose to allocate largest possible, rather than to allocate often
+            end_node = add_node(automata, TRUE, 2);
+            add_arrow(start_node, regex.character, end_node->num, 0);
+        break;
         case REGEX_SEQUENCE:
-            nb_written += aux_regex_to_string(*regex.one, result_string + nb_written);
-            nb_written += sprintf(result_string + nb_written, ".");
-            nb_written += aux_regex_to_string(*regex.two, result_string + nb_written);
-            break;
+            node_one = aux_regex_to_automata(*regex.one, automata, start_node);
+            end_node = aux_regex_to_automata(*regex.two, automata, node_one);
+            node_one->success = FALSE;
+        break;
         case REGEX_BRANCH:
-            nb_written += sprintf(result_string + nb_written, "(");
-            nb_written += aux_regex_to_string(*regex.one, result_string + nb_written);
-            nb_written += sprintf(result_string + nb_written, "|");
-            nb_written += aux_regex_to_string(*regex.two, result_string + nb_written);
-            nb_written += sprintf(result_string + nb_written, ")");
-            break;
+            node_one = aux_regex_to_automata(*regex.one, automata, start_node);
+            node_two = aux_regex_to_automata(*regex.two, automata, start_node);
+            end_node = add_node(automata, TRUE, 2);
+            node_one->success = FALSE;
+            node_two->success = FALSE;
+            add_arrow(node_one, LABEL_EPSILON, end_node->num, 0);
+            add_arrow(node_two, LABEL_EPSILON, end_node->num, 0);
+        break;
         case REGEX_REPEAT:
-            nb_written += sprintf(result_string + nb_written, "(");
-            nb_written += aux_regex_to_string(*regex.one, result_string + nb_written);
-            nb_written += sprintf(result_string + nb_written, "){%i,%i}", regex.min, regex.max);
-            break;
+            node_one = add_node(automata, FALSE, 2);
+            node_two = add_node(automata, FALSE, 1);
+            node_three = aux_regex_to_automata(*regex.one, automata, node_two);
+            end_node = add_node(automata, TRUE, 2);
+
+            node_three->success = FALSE;
+
+            arrow = add_arrow(start_node, LABEL_EPSILON, node_one->num, 1);
+            arrow->counters_actions[0] = new_counter_action(0, ACTION_SET, 0);
+
+            arrow = add_arrow(node_one, LABEL_EPSILON, node_two->num, 1);
+            // regex.max - 1, because that AT_MOST is inclusive
+            // we must not follow the arrow if we already reached regex.max
+            arrow->counters_actions[0] = new_counter_action(0, ACTION_AT_MOST, regex.max - 1);
+
+            arrow = add_arrow(node_three, LABEL_EPSILON, node_one->num, 1);
+            arrow->counters_actions[0] = new_counter_action(0, ACTION_ADD, 1);
+
+            arrow = add_arrow(node_one, LABEL_EPSILON, end_node->num, 2);
+            arrow->counters_actions[0] = new_counter_action(0, ACTION_AT_LEAST, regex.min);
+            arrow->counters_actions[1] = new_counter_action(0, ACTION_AT_MOST, regex.max);
+        break;
     }
-    return nb_written;
+    return end_node;
+}
+
+void aux_regex_to_string (Regex regex, String_Builder * builder) {
+    char buffer [100];
+    switch (regex.tag_regex) {
+        case REGEX_EPSILON:
+            append(builder, "EPS");
+        break;
+        case REGEX_CHARACTER:
+            sprintf(buffer, "%i", regex.character);
+            append(builder, buffer);
+        break;
+        case REGEX_SEQUENCE:
+            aux_regex_to_string(*regex.one, builder);
+            append(builder, ".");
+            aux_regex_to_string(*regex.two, builder);
+        break;
+        case REGEX_BRANCH:
+            append(builder, "(");
+            aux_regex_to_string(*regex.one, builder);
+            append(builder, "|");
+            aux_regex_to_string(*regex.two, builder);
+            append(builder, ")");
+        break;
+        case REGEX_REPEAT:
+            append(builder, "(");
+            aux_regex_to_string(*regex.one, builder);
+            sprintf(buffer, "){%i,%i}", regex.min, regex.max);
+            append(builder, buffer);
+        break;
+    }
+}
+
+char * regex_to_string (Regex regex) {
+    String_Builder builder = new_string_builder(16);
+    aux_regex_to_string (regex, &builder);
+    return builder.str;
 }
