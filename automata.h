@@ -17,11 +17,16 @@ Arrow * add_arrow (Node * node, int label, int dest, int nb_counters_actions);
 Counter_Action new_counter_action (int num_counter, int action, int action_param);
 
 char * automata_to_string (Automata automata);
+char * automata_to_dot (Automata automata);
 void free_automata (Automata nda);
 
 Pipe all_success_walks (Automata nda, int start_node_num, int nb_labels, int * labels);
 Walk pop (Pipe * pipe_walk);
 void free_walk (Walk walk);
+
+void longest_success_walk (
+	Automata automata, int start_node_num, int nb_labels, int * labels,
+	int * nb_labels_used, int * end_node_num);
 
 struct Automata {
 	int nb_nodes; // number of nodes of the nda

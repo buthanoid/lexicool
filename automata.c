@@ -4,7 +4,7 @@
 #include "util.h"
 #include "automata.h"
 
-enum { FALSE, TRUE };
+enum { FALSE = 0, TRUE = 1 }; // used only for assignment
 
 Pipe new_pipe ();
 void push (Pipe * pipe_walk, Walk walk);
@@ -142,7 +142,7 @@ Pipe all_success_walks (Automata automata, int start_node_num, int nb_labels, in
 
 		Walk walk = pop(&walks_to_go);
 
-		if (walk.node->success == TRUE) {
+		if (walk.node->success) {
 			Walk success_walk = copy_walk(walk, automata.nb_counters);
 			push(&success_walks, success_walk);
 		}
@@ -158,7 +158,7 @@ Pipe all_success_walks (Automata automata, int start_node_num, int nb_labels, in
 				if (arrow.label == next_label) {
 					Walk next_walk = copy_walk(walk, automata.nb_counters);
 					int success = apply_counters_actions(next_walk, arrow);
-					if (success == TRUE) {
+					if (success) {
 						next_walk.nb_labels_used ++;
 						next_walk.node = &automata.nodes[arrow.dest];
 						push(&walks_to_go, next_walk);
@@ -169,7 +169,7 @@ Pipe all_success_walks (Automata automata, int start_node_num, int nb_labels, in
 				else if (arrow.label == LABEL_EPSILON) {
 					Walk next_walk = copy_walk(walk, automata.nb_counters);
 					int success = apply_counters_actions(next_walk, arrow);
-					if (success == TRUE) {
+					if (success) {
 						next_walk.node = &automata.nodes[arrow.dest];
 						push(&walks_to_go, next_walk);
 					}
@@ -184,7 +184,7 @@ Pipe all_success_walks (Automata automata, int start_node_num, int nb_labels, in
 				if (arrow.label == LABEL_EPSILON) {
 					Walk next_walk = copy_walk(walk, automata.nb_counters);
 					int success = apply_counters_actions(next_walk, arrow);
-					if (success == TRUE) {
+					if (success) {
 						next_walk.node = &automata.nodes[arrow.dest];
 						push(&walks_to_go, next_walk);
 					}
@@ -197,6 +197,25 @@ Pipe all_success_walks (Automata automata, int start_node_num, int nb_labels, in
 	}
 
 	return success_walks;
+}
+
+void longest_success_walk (
+	Automata automata, int start_node_num, int nb_labels, int * labels,
+	int * nb_labels_used, int * end_node_num
+) {
+	Pipe success_walks = all_success_walks(automata, start_node_num, nb_labels, labels);
+
+	*nb_labels_used = 0;
+	*end_node_num = 0;
+
+	while (success_walks.length > 0) {
+		Walk walk = pop(&success_walks);
+		if (walk.nb_labels_used > *nb_labels_used) {
+			*nb_labels_used = walk.nb_labels_used;
+			*end_node_num = walk.node->num;
+		}
+		free_walk(walk);
+	}
 }
 
 int apply_counters_actions (Walk walk, Arrow arrow) {
@@ -281,16 +300,35 @@ Walk pop (Pipe * pipe_walk) {
 	return popped_walk;
 }
 
+void free_automata (Automata automata) {
+	for (int i = 0; i < automata.nb_nodes; i ++) {
+		Node node = automata.nodes[i];
+		for (int j = 0; j < node.nb_arrows; j ++) {
+			Arrow arrow = node.arrows[j];
+			free(arrow.counters_actions);
+		}
+		free(node.arrows);
+	}
+	free(automata.nodes);
+}
+
+void free_walk (Walk walk) {
+	free(walk.counters);
+}
+
 char * automata_to_string (Automata automata) {
 	String_Builder builder = new_string_builder(automata.nb_nodes * 10);
 	char buffer [100];
+
+	sprintf(buffer, "automata %i nodes %i counters\n", automata.nb_nodes, automata.nb_counters);
+	append(&builder, buffer);
 
 	for (int i = 0; i < automata.nb_nodes; i ++) {
 		Node node = automata.nodes[i];
 		for (int j = 0; j < node.nb_arrows; j++) {
 			Arrow arrow = node.arrows[j];
 
-			if (node.success == TRUE) {
+			if (node.success) {
 				sprintf(buffer, "((%i))", node.num);
 			}
 			else {
@@ -307,7 +345,7 @@ char * automata_to_string (Automata automata) {
 			}
 
 			Node dest_node = automata.nodes[arrow.dest];
-			if (dest_node.success == TRUE) {
+			if (dest_node.success) {
 				sprintf(buffer, "((%i))", dest_node.num);
 			}
 			else {
@@ -319,19 +357,19 @@ char * automata_to_string (Automata automata) {
 				Counter_Action counter_action = arrow.counters_actions[k];
 				switch (counter_action.action) {
 					case ACTION_SET:
-						sprintf(buffer, " [%i := %i]",
+						sprintf(buffer, " [c%i := %i]",
 							counter_action.num_counter, counter_action.action_param);
 					break;
 					case ACTION_ADD:
-						sprintf(buffer, " [%i += %i]",
+						sprintf(buffer, " [c%i += %i]",
 							counter_action.num_counter, counter_action.action_param);
 					break;
 					case ACTION_AT_LEAST:
-						sprintf(buffer, " [%i >= %i]",
+						sprintf(buffer, " [c%i >= %i]",
 							counter_action.num_counter, counter_action.action_param);
 					break;
 					case ACTION_AT_MOST:
-						sprintf(buffer, " [%i <= %i]",
+						sprintf(buffer, " [c%i <= %i]",
 							counter_action.num_counter, counter_action.action_param);
 					break;
 				}
@@ -345,18 +383,64 @@ char * automata_to_string (Automata automata) {
 	return builder.str;
 }
 
-void free_automata (Automata automata) {
+char * automata_to_dot (Automata automata) {
+	String_Builder builder = new_string_builder(automata.nb_nodes * 10);
+	char buffer [100];
+
+	append(&builder, "digraph automata {\n\n");
+
 	for (int i = 0; i < automata.nb_nodes; i ++) {
 		Node node = automata.nodes[i];
-		for (int j = 0; j < node.nb_arrows; j ++) {
-			Arrow arrow = node.arrows[j];
-			free(arrow.counters_actions);
-		}
-		free(node.arrows);
-	}
-	free(automata.nodes);
-}
 
-void free_walk (Walk walk) {
-	free(walk.counters);
+		sprintf(buffer, "node%i [label=\"%i\"%s];\n",
+			node.num, node.num, node.success ? ", peripheries=2" : "");
+		append(&builder, buffer);
+
+		for (int j = 0; j < node.nb_arrows; j++) {
+			Arrow arrow = node.arrows[j];
+
+			sprintf(buffer, "node%i -> node%i", node.num, arrow.dest);
+			append(&builder, buffer);
+
+			int hasLabels = arrow.label != LABEL_EPSILON || arrow.nb_counters_actions > 0;
+
+			if (hasLabels) append(&builder, " [label=\"");
+
+			if (arrow.label != LABEL_EPSILON) {
+				sprintf(buffer, "%i", arrow.label);
+				append(&builder, buffer);
+			}
+
+			for (int k = 0; k < arrow.nb_counters_actions; k ++) {
+				Counter_Action counter_action = arrow.counters_actions[k];
+				switch (counter_action.action) {
+					case ACTION_SET:
+						sprintf(buffer, " [c%i := %i]",
+							counter_action.num_counter, counter_action.action_param);
+					break;
+					case ACTION_ADD:
+						sprintf(buffer, " [c%i += %i]",
+							counter_action.num_counter, counter_action.action_param);
+					break;
+					case ACTION_AT_LEAST:
+						sprintf(buffer, " [c%i >= %i]",
+							counter_action.num_counter, counter_action.action_param);
+					break;
+					case ACTION_AT_MOST:
+						sprintf(buffer, " [c%i <= %i]",
+							counter_action.num_counter, counter_action.action_param);
+					break;
+				}
+				append(&builder, buffer);
+			}
+
+			if (hasLabels) append(&builder, "\"]");
+			append(&builder, ";\n");
+		}
+		append(&builder, "\n");
+	}
+
+	append(&builder, "}\n");
+
+	return builder.str;
 }
