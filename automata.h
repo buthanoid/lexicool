@@ -8,25 +8,30 @@ typedef struct Arrow Arrow;
 typedef struct Counter_Action Counter_Action;
 
 typedef struct Walk Walk;
-typedef struct List List;
-typedef struct Pipe Pipe;
+
+typedef struct Stack Stack;
 
 Automata new_automata (int nb_nodes_capacity, int nb_counters);
-Node * add_node (Automata * nda, int success, int nb_arrows_capacity);
-Arrow * add_arrow (Node * node, int label, int dest, int nb_counters_actions);
-Counter_Action new_counter_action (int num_counter, int action, int action_param);
+int add_node (Automata * automata, int success, int nb_arrows_capacity);
+int add_arrow (
+	Automata * automata, int num_node, int label, int dest, int nb_counters_actions_capacity);
+int add_counter_action (
+	Automata * automata, int num_node, int num_arrow,
+	int num_counter, int action, int action_param);
 
 char * automata_to_string (Automata automata);
 char * automata_to_dot (Automata automata);
 void free_automata (Automata nda);
 
-Pipe all_success_walks (Automata nda, int start_node_num, int nb_labels, int * labels);
-Walk pop (Pipe * pipe_walk);
+Stack * all_success_walks (Automata nda, int start_node_num, int nb_labels, int * labels);
 void free_walk (Walk walk);
 
 void longest_success_walk (
 	Automata automata, int start_node_num, int nb_labels, int * labels,
 	int * nb_labels_used, int * end_node_num);
+
+void push (Walk walk, Stack ** ref_stack);
+Walk pop (Stack ** ref_stack);
 
 struct Automata {
 	int nb_nodes; // number of nodes of the nda
@@ -51,6 +56,7 @@ struct Arrow {
 	int dest; // the node that is pointed by the arrow. index in the nodes array
 
 	int nb_counters_actions;
+	int nb_counters_actions_capacity;
 	Counter_Action * counters_actions;
 };
 
@@ -66,13 +72,7 @@ struct Walk {
 	Node * node;
 };
 
-struct List {
+struct Stack {
 	Walk walk;
-	List * next;
-};
-
-struct Pipe {
-	int length;
-	List * first;
-	List * last;
+	Stack * next;
 };

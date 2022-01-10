@@ -1,7 +1,25 @@
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
+
 #include "util.h"
+
+int max_int (int a, int b) { return (a > b) ? a : b; }
+
+int adapt_capacity (int * capacity, void ** ref_array, int nb_elements, size_t element_size) {
+
+	int new_capacity = max_int(nb_elements, (*capacity) * 2);
+
+	void * new_array = reallocarray(*ref_array, new_capacity, element_size);
+
+	if (new_array == NULL) {
+		return FALSE;
+	}
+	else {
+		*capacity = new_capacity;
+		*ref_array = new_array;
+		return TRUE;
+	}
+}
 
 // capacity must be >= 1
 String_Builder new_string_builder (int capacity) {
@@ -17,17 +35,11 @@ void append (String_Builder * builder, char * other_string) {
 	int other_length = strlen(other_string);
 	int both_length = builder->length + other_length;
 
-	if (both_length > builder->capacity) {
-		builder->capacity *= 2;
-		if (both_length > builder->capacity) builder->capacity = both_length ;
-		char * new_str = realloc(builder->str, builder->capacity * sizeof(char));
-		if (new_str == NULL) {
+	int success = adapt_capacity(
+		&builder->capacity, (void **) &builder->str, both_length, sizeof(char));
 
-			return;
-		}
-		else builder->str = new_str;
+	if (success) {
+		memcpy(builder->str + builder->length - 1, other_string, other_length + 1);
+		builder->length += other_length;
 	}
-
-	memcpy(builder->str + builder->length - 1, other_string, other_length + 1);
-	builder->length += other_length;
 }
