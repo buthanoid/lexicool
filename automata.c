@@ -6,14 +6,14 @@
 
 int apply_counters_actions (Walk walk, Arrow arrow);
 
-/*int main (char ** argv) {
+/*int main (int argc, char ** argv) {
 
 	Automata automata = new_automata(1, 1);
 	int node0 = add_node(&automata, TRUE, 2);
-	int arrow0 = add_arrow(&automata, node0, 0, 0, 2);
+	int arrow0 = add_label_arrow(&automata, node0, 0, 0, 2);
 	add_counter_action(&automata, node0, arrow0, 0, ACTION_ADD, 1);
 	add_counter_action(&automata, node0, arrow0, 0, ACTION_AT_MOST, 20);
-	int arrow1 = add_arrow(&automata, node0, 0, 0, 0);
+	add_label_arrow(&automata, node0, 0, 0, 0);
 
 	int labels[100] = { 0 };
 	int nb_labels_used, end_node_num;
@@ -65,7 +65,8 @@ int add_node (Automata * automata, int success, int nb_arrows_capacity) {
 }
 
 int add_arrow (
-	Automata * automata, int num_node, int label, int dest, int nb_counters_actions_capacity
+	Automata * automata, int num_node, int label, int epsilon,
+	int dest, int nb_counters_actions_capacity
 ) {
 
 	Node * node = &automata->nodes[num_node];
@@ -78,6 +79,7 @@ int add_arrow (
 
 		Arrow arrow;
 		arrow.label = label;
+		arrow.epsilon = epsilon;
 		arrow.dest = dest;
 		arrow.nb_counters_actions = 0;
 		arrow.nb_counters_actions_capacity = nb_counters_actions_capacity;
@@ -88,6 +90,18 @@ int add_arrow (
 		return num_arrow;
 	}
 	else return -1;
+}
+
+int add_label_arrow (
+	Automata * automata, int num_node, int label, int dest, int nb_counters_actions_capacity
+) {
+	return add_arrow(automata, num_node, label, FALSE, dest, nb_counters_actions_capacity);
+}
+
+int add_epsilon_arrow (
+	Automata * automata, int num_node, int dest, int nb_counters_actions_capacity
+) {
+	return add_arrow(automata, num_node, 0, TRUE, dest, nb_counters_actions_capacity);
 }
 
 int add_counter_action (
@@ -126,7 +140,7 @@ Walk copy_walk (Walk walk, int nb_counters) {
 // nb_labels must be >= 0
 // return can have zero elements (return.first == NULL)
 Stack * all_success_walks (Automata automata, int start_node_num, int nb_labels, int * labels) {
-
+	int explored = 0;
 	Walk first_walk;
 	first_walk.nb_labels_used = 0;
 	first_walk.node = &automata.nodes[start_node_num];
@@ -141,7 +155,7 @@ Stack * all_success_walks (Automata automata, int start_node_num, int nb_labels,
 	Stack * stack_success = NULL;
 
 	while (stack_remaining != NULL) {
-
+		explored ++;
 		Walk walk = pop(&stack_remaining);
 
 		if (walk.node->success) {
@@ -149,55 +163,33 @@ Stack * all_success_walks (Automata automata, int start_node_num, int nb_labels,
 			push(success_walk, &stack_success);
 		}
 
-		if (walk.nb_labels_used < nb_labels) {
+		// even if has_next_label is false, we still need to follow epsilon arrows
+		int next_label;
+		int has_next_label = (walk.nb_labels_used < nb_labels);
+		if (has_next_label) next_label = labels[walk.nb_labels_used];
 
-			int next_label = labels[walk.nb_labels_used];
+		for (int i = 0; i < walk.node->nb_arrows; i ++) {
+			Arrow arrow = walk.node->arrows[i];
 
-			for (int i = 0; i < walk.node->nb_arrows; i ++) {
-				Arrow arrow = walk.node->arrows[i];
+			if ((has_next_label && next_label == arrow.label) || arrow.epsilon) {
 
-				// follow the arrow if the labels are equal
-				if (arrow.label == next_label) {
-					Walk next_walk = copy_walk(walk, automata.nb_counters);
-					int success_actions = apply_counters_actions(next_walk, arrow);
-					if (success_actions) {
-						next_walk.nb_labels_used ++;
-						next_walk.node = &automata.nodes[arrow.dest];
-						push(next_walk, &stack_remaining);
-					}
-					else free_walk(next_walk);
+				Walk new_walk = copy_walk(walk, automata.nb_counters);
+
+				int success_actions = apply_counters_actions(new_walk, arrow);
+				if (success_actions) {
+
+					if (! arrow.epsilon) new_walk.nb_labels_used ++;
+					new_walk.node = &automata.nodes[arrow.dest];
+
+					push(new_walk, &stack_remaining);
 				}
-				// or follow the epsilon-transition
-				else if (arrow.label == LABEL_EPSILON) {
-					Walk next_walk = copy_walk(walk, automata.nb_counters);
-					int success_actions = apply_counters_actions(next_walk, arrow);
-					if (success_actions) {
-						next_walk.node = &automata.nodes[arrow.dest];
-						push(next_walk, &stack_remaining);
-					}
-					else free_walk(next_walk);
-				}
-			}
-		}
-		else {
-			for (int i = 0; i < walk.node->nb_arrows; i ++) {
-				Arrow arrow = walk.node->arrows[i];
-
-				if (arrow.label == LABEL_EPSILON) {
-					Walk next_walk = copy_walk(walk, automata.nb_counters);
-					int success_actions = apply_counters_actions(next_walk, arrow);
-					if (success_actions) {
-						next_walk.node = &automata.nodes[arrow.dest];
-						push(next_walk, &stack_remaining);
-					}
-					else free_walk(next_walk);
-				}
+				else free_walk(new_walk);
 			}
 		}
 
 		free_walk(walk);
 	}
-
+	printf("explored %i walks\n", explored);
 	return stack_success;
 }
 
@@ -303,29 +295,19 @@ char * automata_to_string (Automata automata) {
 		for (int j = 0; j < node.nb_arrows; j++) {
 			Arrow arrow = node.arrows[j];
 
-			if (node.success) {
-				sprintf(buffer, "((%i))", node.num);
-			}
-			else {
-				sprintf(buffer, "(%i)", node.num);
-			}
+			if (node.success) { sprintf(buffer, "((%i))", node.num); }
+			else { sprintf(buffer, "(%i)", node.num); }
 			append(&builder, buffer);
 
-			if (arrow.label == LABEL_EPSILON) {
-				append(&builder, "--EPS-->");
-			}
+			if (arrow.epsilon) { append(&builder, "--EPS-->"); }
 			else {
 				sprintf(buffer, "--%i-->", arrow.label);
 				append(&builder, buffer);
 			}
 
 			Node dest_node = automata.nodes[arrow.dest];
-			if (dest_node.success) {
-				sprintf(buffer, "((%i))", dest_node.num);
-			}
-			else {
-				sprintf(buffer, "(%i)", dest_node.num);
-			}
+			if (dest_node.success) { sprintf(buffer, "((%i))", dest_node.num); }
+			else { sprintf(buffer, "(%i)", dest_node.num); }
 			append(&builder, buffer);
 
 			for (int k = 0; k < arrow.nb_counters_actions; k ++) {
@@ -377,11 +359,11 @@ char * automata_to_dot (Automata automata) {
 			sprintf(buffer, "node%i -> node%i", node.num, arrow.dest);
 			append(&builder, buffer);
 
-			int hasLabels = arrow.label != LABEL_EPSILON || arrow.nb_counters_actions > 0;
+			int hasDotLabel = (! arrow.epsilon) || arrow.nb_counters_actions > 0;
 
-			if (hasLabels) append(&builder, " [label=\"");
+			if (hasDotLabel) append(&builder, " [label=\"");
 
-			if (arrow.label != LABEL_EPSILON) {
+			if (! arrow.epsilon) {
 				sprintf(buffer, "%i", arrow.label);
 				append(&builder, buffer);
 			}
@@ -409,7 +391,7 @@ char * automata_to_dot (Automata automata) {
 				append(&builder, buffer);
 			}
 
-			if (hasLabels) append(&builder, "\"]");
+			if (hasDotLabel) append(&builder, "\"]");
 			append(&builder, ";\n");
 		}
 		append(&builder, "\n");

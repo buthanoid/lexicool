@@ -1,4 +1,3 @@
-enum { LABEL_EPSILON = -1 }; // constant for epsilon label
 // constants for counter actions
 enum { ACTION_SET, ACTION_ADD, ACTION_AT_LEAST, ACTION_AT_MOST };
 
@@ -13,8 +12,13 @@ typedef struct Stack Stack;
 
 Automata new_automata (int nb_nodes_capacity, int nb_counters);
 int add_node (Automata * automata, int success, int nb_arrows_capacity);
-int add_arrow (
+
+int add_label_arrow (
 	Automata * automata, int num_node, int label, int dest, int nb_counters_actions_capacity);
+
+int add_epsilon_arrow (
+	Automata * automata, int num_node, int dest, int nb_counters_actions_capacity);
+
 int add_counter_action (
 	Automata * automata, int num_node, int num_arrow,
 	int num_counter, int action, int action_param);
@@ -54,6 +58,7 @@ struct Node {
 struct Arrow {
 	int label; // which letter must be read to follow the arrow
 	int dest; // the node that is pointed by the arrow. index in the nodes array
+	int epsilon; // boolean
 
 	int nb_counters_actions;
 	int nb_counters_actions_capacity;

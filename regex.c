@@ -30,7 +30,7 @@ int aux_regex_to_automata (
 
 char * regex_to_string (Regex regex);
 
-int main (char ** argv) {
+int main (int argc, char ** argv) {
 
     Regex regex0;
     regex0.tag_regex = REGEX_CHARACTER;
@@ -44,7 +44,7 @@ int main (char ** argv) {
 
     Regex regex1;
     regex1.tag_regex = REGEX_CHARACTER;
-    regex1.character = 4000;
+    regex1.character = 160;
 
     Regex regex2;
     regex2.tag_regex = REGEX_SEQUENCE;
@@ -66,7 +66,7 @@ int main (char ** argv) {
     printf("%s\n", string_automata);
     free(string_automata);
 
-    int labels[] = { 12, 12, 4000, 12, 12, 4000, 12, 12, 4000, 12, 12, 4000 };
+    int labels[] = { 12, 12, 160, 12, 12, 160, 12, 12, 160, 12, 12, 160 };
 
     int nb_labels_used, end_node_num;
     longest_success_walk(automata, 0, 12, labels, &nb_labels_used, &end_node_num);
@@ -93,7 +93,6 @@ Automata regex_to_automata (Regex regex) {
 }
 
 void aux_length_regex_to_automata (Regex regex, int * nb_nodes, int * nb_counters) {
-    int result_length, result_one, result_two;
     switch (regex.tag_regex) {
         case REGEX_EPSILON:
         case REGEX_CHARACTER:
@@ -125,13 +124,13 @@ int aux_regex_to_automata (
     switch (regex.tag_regex) {
         case REGEX_EPSILON:
             end_node = add_node(automata, TRUE, 2);
-            add_arrow(automata, start_node, LABEL_EPSILON, end_node, 0);
+            add_epsilon_arrow(automata, start_node, end_node, 0);
         break;
         case REGEX_CHARACTER:
             // wet set arrow capacity to 2 because we will never need more than 2 arrows
             // we choose to allocate largest possible, rather than to allocate often
             end_node = add_node(automata, TRUE, 2);
-            add_arrow(automata, start_node, regex.character, end_node, 0);
+            add_label_arrow(automata, start_node, regex.character, end_node, 0);
         break;
         case REGEX_SEQUENCE:
             node_one = aux_regex_to_automata(*regex.one, automata, start_node, nb_counters_used);
@@ -144,8 +143,8 @@ int aux_regex_to_automata (
             end_node = add_node(automata, TRUE, 2);
             automata->nodes[node_one].success = FALSE;
             automata->nodes[node_two].success = FALSE;
-            add_arrow(automata, node_one, LABEL_EPSILON, end_node, 0);
-            add_arrow(automata, node_two, LABEL_EPSILON, end_node, 0);
+            add_epsilon_arrow(automata, node_one, end_node, 0);
+            add_epsilon_arrow(automata, node_two, end_node, 0);
         break;
         case REGEX_REPEAT:
             num_counter = (*nb_counters_used) ++;
@@ -156,25 +155,24 @@ int aux_regex_to_automata (
 
             automata->nodes[node_three].success = FALSE;
 
-            arrow = add_arrow(automata, start_node, LABEL_EPSILON, node_one, 1);
+            arrow = add_epsilon_arrow(automata, start_node, node_one, 1);
             add_counter_action(automata, start_node, arrow, num_counter, ACTION_SET, 0);
 
             if (regex.max == MAX_INF) {
-                add_arrow(automata, node_one, LABEL_EPSILON, node_two, 0);
+                add_epsilon_arrow(automata, node_one, node_two, 0);
             }
             else {
-                arrow = add_arrow(automata, node_one, LABEL_EPSILON, node_two, 1);
+                arrow = add_epsilon_arrow(automata, node_one, node_two, 1);
                 // regex.max - 1, because AT_MOST is inclusive
                 // we must not follow the arrow if we already reached regex.max
                 add_counter_action(
                     automata, node_one, arrow, num_counter, ACTION_AT_MOST, regex.max - 1);
             }
 
-            arrow = add_arrow(automata, node_three, LABEL_EPSILON, node_one, 1);
+            arrow = add_epsilon_arrow(automata, node_three, node_one, 1);
             add_counter_action(automata, node_three, arrow, num_counter, ACTION_ADD, 1);
 
-            arrow = add_arrow(automata, node_one, LABEL_EPSILON, end_node,
-                (regex.max == MAX_INF) ? 1 : 2);
+            arrow = add_epsilon_arrow(automata, node_one, end_node, (regex.max == MAX_INF) ? 1 : 2);
 
             add_counter_action(
                 automata, node_one, arrow, num_counter, ACTION_AT_LEAST, regex.min);
