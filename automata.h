@@ -27,15 +27,15 @@ char * automata_to_string (Automata automata);
 char * automata_to_dot (Automata automata);
 void free_automata (Automata nda);
 
-Stack * all_success_walks (Automata nda, int start_node_num, int nb_labels, int * labels);
+Stack all_success_walks (Automata nda, int start_node_num, int nb_labels, int * labels);
 void free_walk (Walk walk);
 
 void longest_success_walk (
 	Automata automata, int start_node_num, int nb_labels, int * labels,
 	int * nb_labels_used, int * end_node_num);
 
-void push (Walk walk, Stack ** ref_stack);
-Walk pop (Stack ** ref_stack);
+void push (Walk walk, Stack * ref_stack);
+Walk pop (Stack * ref_stack);
 
 struct Automata {
 	int nb_nodes; // number of nodes of the nda
@@ -73,11 +73,12 @@ struct Counter_Action {
 
 struct Walk {
 	int nb_labels_used;
+	int node_num;
 	int * counters;
-	Node * node;
 };
 
 struct Stack {
-	Walk walk;
-	Stack * next;
+	int nb_walks;
+	int nb_walks_capacity;
+	Walk * walks;
 };

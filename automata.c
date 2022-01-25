@@ -17,7 +17,7 @@ int apply_counters_actions (Walk walk, Arrow arrow);
 
 	int labels[100] = { 0 };
 	int nb_labels_used, end_node_num;
-	longest_success_walk(automata, 0, 22, labels, &nb_labels_used, &end_node_num);
+	longest_success_walk(automata, 0, 25, labels, &nb_labels_used, &end_node_num);
 
 	printf("%i labels used, landed in node %i\n", nb_labels_used, end_node_num);
 
@@ -139,26 +139,27 @@ Walk copy_walk (Walk walk, int nb_counters) {
 // start_node_num must be < automata.nb_nodes
 // nb_labels must be >= 0
 // return can have zero elements (return.first == NULL)
-Stack * all_success_walks (Automata automata, int start_node_num, int nb_labels, int * labels) {
+Stack all_success_walks (Automata automata, int start_node_num, int nb_labels, int * labels) {
 	int explored = 0;
 	Walk first_walk;
 	first_walk.nb_labels_used = 0;
-	first_walk.node = &automata.nodes[start_node_num];
+	first_walk.node_num = start_node_num;
 	first_walk.counters = malloc(automata.nb_counters * sizeof(int));
 	for (int i = 0; i < automata.nb_counters; i ++) {
 		first_walk.counters[i] = 0;
 	}
 
-	Stack * stack_remaining = NULL;
+	Stack stack_remaining = { 0, 0, NULL };
 	push(first_walk, &stack_remaining);
 
-	Stack * stack_success = NULL;
+	Stack stack_success = { 0, 0, NULL };
 
-	while (stack_remaining != NULL) {
+	while (stack_remaining.nb_walks > 0) {
 		explored ++;
 		Walk walk = pop(&stack_remaining);
+		Node walk_node = automata.nodes[walk.node_num];
 
-		if (walk.node->success) {
+		if (walk_node.success) {
 			Walk success_walk = copy_walk(walk, automata.nb_counters);
 			push(success_walk, &stack_success);
 		}
@@ -168,8 +169,8 @@ Stack * all_success_walks (Automata automata, int start_node_num, int nb_labels,
 		int has_next_label = (walk.nb_labels_used < nb_labels);
 		if (has_next_label) next_label = labels[walk.nb_labels_used];
 
-		for (int i = 0; i < walk.node->nb_arrows; i ++) {
-			Arrow arrow = walk.node->arrows[i];
+		for (int i = 0; i < walk_node.nb_arrows; i ++) {
+			Arrow arrow = walk_node.arrows[i];
 
 			if ((has_next_label && next_label == arrow.label) || arrow.epsilon) {
 
@@ -179,7 +180,7 @@ Stack * all_success_walks (Automata automata, int start_node_num, int nb_labels,
 				if (success_actions) {
 
 					if (! arrow.epsilon) new_walk.nb_labels_used ++;
-					new_walk.node = &automata.nodes[arrow.dest];
+					new_walk.node_num = arrow.dest;
 
 					push(new_walk, &stack_remaining);
 				}
@@ -190,6 +191,7 @@ Stack * all_success_walks (Automata automata, int start_node_num, int nb_labels,
 		free_walk(walk);
 	}
 	printf("explored %i walks\n", explored);
+	free(stack_remaining.walks);
 	return stack_success;
 }
 
@@ -197,19 +199,21 @@ void longest_success_walk (
 	Automata automata, int start_node_num, int nb_labels, int * labels,
 	int * nb_labels_used, int * end_node_num
 ) {
-	Stack * stack_success = all_success_walks(automata, start_node_num, nb_labels, labels);
+	Stack stack_success = all_success_walks(automata, start_node_num, nb_labels, labels);
 
 	*nb_labels_used = 0;
-	*end_node_num = 0;
+	*end_node_num = start_node_num;
 
-	while (stack_success != NULL) {
+	while (stack_success.nb_walks > 0) {
 		Walk walk = pop(&stack_success);
 		if (walk.nb_labels_used > *nb_labels_used) {
 			*nb_labels_used = walk.nb_labels_used;
-			*end_node_num = walk.node->num;
+			*end_node_num = walk.node_num;
 		}
 		free_walk(walk);
 	}
+
+	free(stack_success.walks);
 }
 
 int apply_counters_actions (Walk walk, Arrow arrow) {
@@ -246,25 +250,18 @@ int apply_counters_actions (Walk walk, Arrow arrow) {
 	return success;
 }
 
-void push (Walk walk, Stack ** ref_stack) {
-
-	Stack * new_stack = malloc(1 * sizeof(Stack));
-	new_stack->walk = walk;
-	new_stack->next = *ref_stack;
-
-	*ref_stack = new_stack;
+void push (Walk walk, Stack * stack) {
+	int success_adapt = adapt_capacity(
+		&stack->nb_walks_capacity, (void **) &stack->walks, stack->nb_walks + 1, sizeof(Walk));
+	if (success_adapt) {
+		stack->walks[stack->nb_walks] = walk;
+		stack->nb_walks ++;
+	}
 }
 
-Walk pop (Stack ** ref_stack) {
-	Stack * stack = *ref_stack;
-	Walk walk = stack->walk;
-	Stack * next_stack = stack->next;
-
-	free(stack);
-
-	*ref_stack = next_stack;
-
-	return walk;
+Walk pop (Stack * stack) {
+	stack->nb_walks --;
+	return stack->walks[stack->nb_walks];
 }
 
 void free_automata (Automata automata) {

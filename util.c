@@ -6,19 +6,24 @@
 int max_int (int a, int b) { return (a > b) ? a : b; }
 
 int adapt_capacity (int * capacity, void ** ref_array, int nb_elements, size_t element_size) {
+	
+	if (*capacity >= nb_elements) {
+        return TRUE;
+    }
+    else {
+    	int new_capacity = max_int(nb_elements, (*capacity) * 2);
 
-	int new_capacity = max_int(nb_elements, (*capacity) * 2);
+    	void * new_array = reallocarray(*ref_array, new_capacity, element_size);
 
-	void * new_array = reallocarray(*ref_array, new_capacity, element_size);
-
-	if (new_array == NULL) {
-		return FALSE;
-	}
-	else {
-		*capacity = new_capacity;
-		*ref_array = new_array;
-		return TRUE;
-	}
+    	if (new_array == NULL) {
+    		return FALSE;
+    	}
+    	else {
+    		*capacity = new_capacity;
+    		*ref_array = new_array;
+    		return TRUE;
+    	}
+    }
 }
 
 // capacity must be >= 1
