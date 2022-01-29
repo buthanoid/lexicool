@@ -1,14 +1,15 @@
 // constants for counter actions
 enum { ACTION_SET, ACTION_ADD, ACTION_AT_LEAST, ACTION_AT_MOST };
 
+enum { BAD_NUM = -1 };
+
 typedef struct Automata Automata;
 typedef struct Node Node;
 typedef struct Arrow Arrow;
 typedef struct Counter_Action Counter_Action;
 
-typedef struct Walk Walk;
-
-typedef struct Stack Stack;
+typedef struct Point Point;
+typedef struct Exploration Exploration;
 
 Automata new_automata (int nb_nodes_capacity, int nb_counters);
 int add_node (Automata * automata, int success, int nb_arrows_capacity);
@@ -27,15 +28,17 @@ char * automata_to_string (Automata automata);
 char * automata_to_dot (Automata automata);
 void free_automata (Automata nda);
 
-Stack all_success_walks (Automata nda, int start_node_num, int nb_labels, int * labels);
-void free_walk (Walk walk);
+int apply_counters_actions (int * counters, Arrow arrow);
 
-void longest_success_walk (
-	Automata automata, int start_node_num, int nb_labels, int * labels,
-	int * nb_labels_used, int * end_node_num);
+void explore_step (Exploration * expl, Automata automata, int * labels, int nb_labels);
 
-void push (Walk walk, Stack * ref_stack);
-Walk pop (Stack * ref_stack);
+void explore_farthest_success_node (
+	Automata automata, int start_num_node, int * labels, int nb_labels,
+	int * res_num_node, int * res_nb_labels_used, int * res_counters,
+	int * res_nb_explorations_steps, int * res_max_nb_points_reached
+);
+
+void free_exploration (Exploration expl);
 
 struct Automata {
 	int nb_nodes; // number of nodes of the nda
@@ -71,14 +74,19 @@ struct Counter_Action {
 	int action_param;
 };
 
-struct Walk {
-	int nb_labels_used;
-	int node_num;
-	int * counters;
+struct Point {
+	int num_node; // in which node is the point
+	int num_arrow_next; // the next arrow to be followed (must be a existing arrow num)
+	int nb_labels_used; // the nb of labels used to reach this point
 };
 
-struct Stack {
-	int nb_walks;
-	int nb_walks_capacity;
-	Walk * walks;
+struct Exploration {
+	int nb_points;
+	int nb_points_capacity;
+	Point * points;
+
+	int nb_counters_by_point;
+	int nb_counters;
+	int nb_counters_capacity;
+	int * counters; // the counters for each point
 };

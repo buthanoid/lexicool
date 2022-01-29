@@ -4,27 +4,42 @@
 #include "util.h"
 #include "automata.h"
 
-int apply_counters_actions (Walk walk, Arrow arrow);
-
 /*int main (int argc, char ** argv) {
 
 	Automata automata = new_automata(1, 1);
 	int node0 = add_node(&automata, TRUE, 2);
 	int arrow0 = add_label_arrow(&automata, node0, 0, 0, 2);
 	add_counter_action(&automata, node0, arrow0, 0, ACTION_ADD, 1);
-	add_counter_action(&automata, node0, arrow0, 0, ACTION_AT_MOST, 20);
+	add_counter_action(&automata, node0, arrow0, 0, ACTION_AT_MOST, 30);
 	add_label_arrow(&automata, node0, 0, 0, 0);
-
-	int labels[100] = { 0 };
-	int nb_labels_used, end_node_num;
-	longest_success_walk(automata, 0, 25, labels, &nb_labels_used, &end_node_num);
-
-	printf("%i labels used, landed in node %i\n", nb_labels_used, end_node_num);
 
 	char * string_automata = automata_to_string(automata);
 	printf("%s\n", string_automata);
 	free(string_automata);
 
+	int labels[100] = { 0 };
+	int nb_labels = 25;
+
+	int res_num_node, res_nb_labels_used;
+	int * res_counters = malloc(automata.nb_counters * sizeof(int));
+	int res_nb_explorations_steps, res_max_nb_points_reached;
+
+	explore_farthest_success_node(
+		automata, 0, labels, nb_labels,
+		&res_num_node, &res_nb_labels_used, res_counters,
+		&res_nb_explorations_steps, &res_max_nb_points_reached);
+
+	printf("nb explorations steps: %i, max nb points reached: %i\n",
+		res_nb_explorations_steps, res_max_nb_points_reached);
+
+	printf("final node num: %i, nb labels used: %i/%i\n",
+		res_num_node, res_nb_labels_used, nb_labels);
+
+	printf("final counters: [");
+	for (int i = 0; i < automata.nb_counters; i ++) printf("%i,", res_counters[i]);
+	printf("]\n\n");
+
+	free(res_counters);
 	free_automata(automata);
 }*/
 
@@ -44,8 +59,8 @@ Automata new_automata (int nb_nodes_capacity, int nb_counters) {
 int add_node (Automata * automata, int success, int nb_arrows_capacity) {
 
 	int success_adapt = adapt_capacity(
-		&automata->nb_nodes_capacity, (void **) &automata->nodes,
-		automata->nb_nodes + 1, sizeof(Node));
+		automata->nb_nodes + 1, &automata->nb_nodes_capacity,
+		sizeof(Node), (void **) &automata->nodes);
 
 	if (success_adapt) {
 		int num_node = automata->nb_nodes ++;
@@ -61,7 +76,7 @@ int add_node (Automata * automata, int success, int nb_arrows_capacity) {
 
 		return num_node;
 	}
-	else return -1;
+	else return BAD_NUM;
 }
 
 int add_arrow (
@@ -72,7 +87,7 @@ int add_arrow (
 	Node * node = &automata->nodes[num_node];
 
 	int success_adapt = adapt_capacity(
-		&node->nb_arrows_capacity, (void **) &node->arrows, node->nb_arrows + 1, sizeof(Arrow));
+		node->nb_arrows + 1, &node->nb_arrows_capacity, sizeof(Arrow), (void **) &node->arrows);
 
 	if (success_adapt) {
 		int num_arrow = node->nb_arrows ++;
@@ -89,7 +104,7 @@ int add_arrow (
 
 		return num_arrow;
 	}
-	else return -1;
+	else return BAD_NUM;
 }
 
 int add_label_arrow (
@@ -111,8 +126,8 @@ int add_counter_action (
 	Arrow * arrow = &node.arrows[num_arrow];
 
 	int success_adapt = adapt_capacity(
-		&arrow->nb_counters_actions_capacity, (void **) &arrow->counters_actions,
-		arrow->nb_counters_actions + 1, sizeof(Counter_Action));
+		arrow->nb_counters_actions + 1, &arrow->nb_counters_actions_capacity,
+		sizeof(Counter_Action), (void **) &arrow->counters_actions);
 
 	if (success_adapt) {
 		int num_counter_action = arrow->nb_counters_actions ++;
@@ -122,101 +137,10 @@ int add_counter_action (
 
 		return num_counter_action;
 	}
-	else return -1;
+	else return BAD_NUM;
 }
 
-Walk copy_walk (Walk walk, int nb_counters) {
-	Walk new_walk = walk;
-	new_walk.counters = malloc(nb_counters * sizeof(int));
-	for (int i = 0; i < nb_counters; i ++) {
-		new_walk.counters[i] = walk.counters[i];
-	}
-	return new_walk;
-}
-
-// automata.nb_nodes must be > 0
-// start_node_num must be >= 0
-// start_node_num must be < automata.nb_nodes
-// nb_labels must be >= 0
-// return can have zero elements (return.first == NULL)
-Stack all_success_walks (Automata automata, int start_node_num, int nb_labels, int * labels) {
-	int explored = 0;
-	Walk first_walk;
-	first_walk.nb_labels_used = 0;
-	first_walk.node_num = start_node_num;
-	first_walk.counters = malloc(automata.nb_counters * sizeof(int));
-	for (int i = 0; i < automata.nb_counters; i ++) {
-		first_walk.counters[i] = 0;
-	}
-
-	Stack stack_remaining = { 0, 0, NULL };
-	push(first_walk, &stack_remaining);
-
-	Stack stack_success = { 0, 0, NULL };
-
-	while (stack_remaining.nb_walks > 0) {
-		explored ++;
-		Walk walk = pop(&stack_remaining);
-		Node walk_node = automata.nodes[walk.node_num];
-
-		if (walk_node.success) {
-			Walk success_walk = copy_walk(walk, automata.nb_counters);
-			push(success_walk, &stack_success);
-		}
-
-		// even if has_next_label is false, we still need to follow epsilon arrows
-		int next_label;
-		int has_next_label = (walk.nb_labels_used < nb_labels);
-		if (has_next_label) next_label = labels[walk.nb_labels_used];
-
-		for (int i = 0; i < walk_node.nb_arrows; i ++) {
-			Arrow arrow = walk_node.arrows[i];
-
-			if ((has_next_label && next_label == arrow.label) || arrow.epsilon) {
-
-				Walk new_walk = copy_walk(walk, automata.nb_counters);
-
-				int success_actions = apply_counters_actions(new_walk, arrow);
-				if (success_actions) {
-
-					if (! arrow.epsilon) new_walk.nb_labels_used ++;
-					new_walk.node_num = arrow.dest;
-
-					push(new_walk, &stack_remaining);
-				}
-				else free_walk(new_walk);
-			}
-		}
-
-		free_walk(walk);
-	}
-	printf("explored %i walks\n", explored);
-	free(stack_remaining.walks);
-	return stack_success;
-}
-
-void longest_success_walk (
-	Automata automata, int start_node_num, int nb_labels, int * labels,
-	int * nb_labels_used, int * end_node_num
-) {
-	Stack stack_success = all_success_walks(automata, start_node_num, nb_labels, labels);
-
-	*nb_labels_used = 0;
-	*end_node_num = start_node_num;
-
-	while (stack_success.nb_walks > 0) {
-		Walk walk = pop(&stack_success);
-		if (walk.nb_labels_used > *nb_labels_used) {
-			*nb_labels_used = walk.nb_labels_used;
-			*end_node_num = walk.node_num;
-		}
-		free_walk(walk);
-	}
-
-	free(stack_success.walks);
-}
-
-int apply_counters_actions (Walk walk, Arrow arrow) {
+int apply_counters_actions (int * counters, Arrow arrow) {
 	int success = TRUE;
 
 	for (int i = 0; i < arrow.nb_counters_actions; i ++) {
@@ -227,19 +151,19 @@ int apply_counters_actions (Walk walk, Arrow arrow) {
 
 		switch (counter_action.action) {
 			case ACTION_SET:
-				walk.counters[num_counter] = param;
+				counters[num_counter] = param;
 				break;
 			case ACTION_ADD:
-				walk.counters[num_counter] += param;
+				counters[num_counter] += param;
 				break;
 			case ACTION_AT_LEAST:
-				if (walk.counters[num_counter] < param) {
+				if (counters[num_counter] < param) {
 					success = FALSE;
 					i = arrow.nb_counters_actions; // end loop
 				}
 				break;
 			case ACTION_AT_MOST:
-				if (walk.counters[num_counter] > param) {
+				if (counters[num_counter] > param) {
 					success = FALSE;
 					i = arrow.nb_counters_actions; // end loop
 				}
@@ -250,18 +174,144 @@ int apply_counters_actions (Walk walk, Arrow arrow) {
 	return success;
 }
 
-void push (Walk walk, Stack * stack) {
-	int success_adapt = adapt_capacity(
-		&stack->nb_walks_capacity, (void **) &stack->walks, stack->nb_walks + 1, sizeof(Walk));
-	if (success_adapt) {
-		stack->walks[stack->nb_walks] = walk;
-		stack->nb_walks ++;
+int push_point (Exploration * expl, int num_node, int num_arrow_next, int nb_labels_used) {
+
+	int success_adapt_1 = adapt_capacity(
+		expl->nb_points + 1, &expl->nb_points_capacity, sizeof(Point), (void **) &expl->points);
+
+	int success_adapt_2 = success_adapt_1 && adapt_capacity(
+		expl->nb_counters + expl->nb_counters_by_point, &expl->nb_counters_capacity,
+		sizeof(int), (void **) &expl->counters);
+
+	if (success_adapt_1 && success_adapt_2) {
+
+		int num_point = expl->nb_points ++;
+		Point new_point = { num_node, num_arrow_next, nb_labels_used };
+		expl->points[num_point] = new_point;
+
+		// settings counters to zeroes
+		for (int i = 0; i < expl->nb_counters_by_point; i ++) {
+			expl->counters[expl->nb_counters] = 0;
+			expl->nb_counters ++;
+		}
+
+		return num_point;
 	}
+	else return BAD_NUM;
 }
 
-Walk pop (Stack * stack) {
-	stack->nb_walks --;
-	return stack->walks[stack->nb_walks];
+void pop_point (Exploration * expl) {
+	expl->nb_points --;
+	expl->nb_counters -= expl->nb_counters_by_point;
+}
+
+void explore_step (Exploration * expl, Automata automata, int * labels, int nb_labels) {
+
+	// get the top point of the stack
+	int num_point = expl->nb_points - 1;
+	Point point = expl->points[num_point];
+	Node node = automata.nodes[point.num_node];
+
+	// if num_arrow_next does not exist, pop and return
+	if (point.num_arrow_next == node.nb_arrows) {
+		pop_point(expl);
+		return;
+	}
+
+	// if num_arrow_next is not the last arrow to explore in the node
+	// we store a future point of exploration, with num_arrow_next + 1
+	if (point.num_arrow_next < node.nb_arrows - 1) {
+
+		// duplicate the point
+		int num_new_point = push_point(
+			expl, point.num_node, point.num_arrow_next, point.nb_labels_used);
+
+		// duplicate the counters
+		int start_old_counters = num_point * expl->nb_counters_by_point;
+		int start_new_counters = num_new_point * expl->nb_counters_by_point;
+		for (int i = 0; i < expl->nb_counters_by_point; i ++) {
+			expl->counters[start_new_counters + i] = expl->counters[start_old_counters + i];
+		}
+
+		// increment arrow of the old point
+		expl->points[num_point].num_arrow_next ++;
+
+		// set the new point as current (we always work on the top point)
+		num_point = num_new_point;
+	}
+
+	// now we try to follow num_arrow_next
+
+	Arrow arrow = node.arrows[point.num_arrow_next];
+
+	int has_next_label = (point.nb_labels_used < nb_labels);
+	int next_label;
+	if (has_next_label) next_label = labels[point.nb_labels_used];
+
+	// either the next label is the same of the arrow, either the arrow is epsilon
+	if ((has_next_label && next_label == arrow.label) || arrow.epsilon) {
+
+		int * counters = &expl->counters[num_point * expl->nb_counters_by_point];
+
+		int success_actions = apply_counters_actions(counters, arrow);
+		if (success_actions) {
+
+			// move point to the next node
+			expl->points[num_point].num_node = arrow.dest;
+			expl->points[num_point].num_arrow_next = 0;
+			if (! arrow.epsilon) expl->points[num_point].nb_labels_used ++;
+		}
+		else pop_point(expl);
+	}
+	else pop_point(expl);
+
+}
+
+void explore_farthest_success_node (
+	Automata automata, int start_num_node, int * labels, int nb_labels,
+	int * res_num_node, int * res_nb_labels_used, int * res_counters,
+	int * res_nb_explorations_steps, int * res_max_nb_points_reached
+) {
+	// init result values
+	*res_num_node = BAD_NUM;
+	*res_nb_labels_used = 0;
+	for (int i = 0; i < automata.nb_counters; i ++) res_counters[i] = 0;
+	*res_nb_explorations_steps = 0;
+	*res_max_nb_points_reached = 0;
+
+	Exploration expl = { 0, 0, NULL, automata.nb_counters, 0, 0, NULL };
+
+	push_point(&expl, start_num_node, 0, 0);
+
+	while (expl.nb_points > 0) {
+		int num_point = expl.nb_points - 1;
+		Point point = expl.points[num_point];
+
+		if (automata.nodes[point.num_node].success) {
+			if (point.nb_labels_used > *res_nb_labels_used || *res_num_node == BAD_NUM) {
+
+				*res_num_node = point.num_node;
+				*res_nb_labels_used = point.nb_labels_used;
+
+				int start_counter = num_point * expl.nb_counters_by_point;
+				for (int i = 0; i < automata.nb_counters; i ++) {
+					res_counters[i] = expl.counters[start_counter + i];
+				}
+			}
+		}
+
+		*res_max_nb_points_reached = max_int(*res_max_nb_points_reached, expl.nb_points);
+
+		explore_step(&expl, automata, labels, nb_labels);
+		(*res_nb_explorations_steps) ++;
+	}
+
+	free_exploration(expl);
+}
+
+void free_exploration (Exploration expl) {
+	free(expl.points);
+	free(expl.counters);
 }
 
 void free_automata (Automata automata) {
@@ -274,10 +324,6 @@ void free_automata (Automata automata) {
 		free(node.arrows);
 	}
 	free(automata.nodes);
-}
-
-void free_walk (Walk walk) {
-	free(walk.counters);
 }
 
 char * automata_to_string (Automata automata) {
@@ -334,7 +380,7 @@ char * automata_to_string (Automata automata) {
 		}
 	}
 
-	return builder.str;
+	return builder.chars;
 }
 
 char * automata_to_dot (Automata automata) {
@@ -396,5 +442,5 @@ char * automata_to_dot (Automata automata) {
 
 	append(&builder, "}\n");
 
-	return builder.str;
+	return builder.chars;
 }

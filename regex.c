@@ -67,12 +67,28 @@ int main (int argc, char ** argv) {
     free(string_automata);
 
     int labels[] = { 12, 12, 160, 12, 12, 160, 12, 12, 160, 12, 12, 160 };
+    int nb_labels = 12;
 
-    int nb_labels_used, end_node_num;
-    longest_success_walk(automata, 0, 12, labels, &nb_labels_used, &end_node_num);
+    int res_num_node, res_nb_labels_used;
+	int * res_counters = malloc(automata.nb_counters * sizeof(int));
+	int res_nb_explorations_steps, res_max_nb_points_reached;
 
-    printf("%i labels used, landed in node %i\n", nb_labels_used, end_node_num);
+    explore_farthest_success_node(
+        automata, 0, labels, nb_labels,
+        &res_num_node, &res_nb_labels_used, res_counters,
+        &res_nb_explorations_steps, &res_max_nb_points_reached);
 
+    printf("nb explorations steps: %i, max nb points reached: %i\n",
+        res_nb_explorations_steps, res_max_nb_points_reached);
+
+    printf("final node num: %i, nb labels used: %i/%i\n",
+        res_num_node, res_nb_labels_used, nb_labels);
+
+    printf("final counters: [");
+    for (int i = 0; i < automata.nb_counters; i ++) printf("%i,", res_counters[i]);
+    printf("]\n\n");
+
+    free(res_counters);
     free_automata(automata);
 }
 
@@ -225,5 +241,5 @@ void aux_regex_to_string (Regex regex, String_Builder * builder) {
 char * regex_to_string (Regex regex) {
     String_Builder builder = new_string_builder(16);
     aux_regex_to_string (regex, &builder);
-    return builder.str;
+    return builder.chars;
 }
