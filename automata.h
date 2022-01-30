@@ -11,7 +11,7 @@ typedef struct Counter_Action Counter_Action;
 typedef struct Point Point;
 typedef struct Exploration Exploration;
 
-Automata new_automata (int nb_nodes_capacity, int nb_counters);
+int new_automata (Automata * res_automata, int nb_nodes_capacity, int nb_counters);
 int add_node (Automata * automata, int success, int nb_arrows_capacity);
 
 int add_label_arrow (
@@ -19,6 +19,11 @@ int add_label_arrow (
 
 int add_epsilon_arrow (
 	Automata * automata, int num_node, int dest, int nb_counters_actions_capacity);
+
+int add_interval_arrow (
+	Automata * automata, int num_node, int label, int label_max,
+	int dest, int nb_counters_actions_capacity
+);
 
 int add_counter_action (
 	Automata * automata, int num_node, int num_arrow,
@@ -54,14 +59,14 @@ struct Node {
 
 	int nb_arrows; // number of arrows of the node
 	int nb_arrows_capacity; // capacity of the arrays storing the arrows
-
 	Arrow * arrows;
 };
 
 struct Arrow {
 	int label; // which letter must be read to follow the arrow
+	int label_max; // for labels interval: [label-label_max]. disabled by label_max == label
+	int epsilon; // boolean true for epsilon arrows, false otherwise
 	int dest; // the node that is pointed by the arrow. index in the nodes array
-	int epsilon; // boolean
 
 	int nb_counters_actions;
 	int nb_counters_actions_capacity;

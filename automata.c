@@ -6,12 +6,14 @@
 
 /*int main (int argc, char ** argv) {
 
-	Automata automata = new_automata(1, 1);
+	Automata automata;
+	new_automata(&automata, 1, 1);
+
 	int node0 = add_node(&automata, TRUE, 2);
 	int arrow0 = add_label_arrow(&automata, node0, 0, 0, 2);
 	add_counter_action(&automata, node0, arrow0, 0, ACTION_ADD, 1);
 	add_counter_action(&automata, node0, arrow0, 0, ACTION_AT_MOST, 30);
-	add_label_arrow(&automata, node0, 0, 0, 0);
+	add_interval_arrow(&automata, node0, 0, 1, 0, 0);
 
 	char * string_automata = automata_to_string(automata);
 	printf("%s\n", string_automata);
@@ -44,13 +46,16 @@
 }*/
 
 // nb_nodes must be > 0
-Automata new_automata (int nb_nodes_capacity, int nb_counters) {
-	Automata automata;
-	automata.nb_nodes = 0;
-	automata.nb_nodes_capacity = nb_nodes_capacity;
-	automata.nodes = malloc (nb_nodes_capacity * sizeof(Node));
-	automata.nb_counters = nb_counters;
-	return automata;
+int new_automata (Automata * res_automata, int nb_nodes_capacity, int nb_counters) {
+
+	Node * nodes = malloc (nb_nodes_capacity * sizeof(Node));
+	// no automata created if malloc problem
+	if (nodes == NULL && nb_nodes_capacity > 0) { return FALSE; }
+
+	Automata automata = { 0, nb_nodes_capacity, nodes, nb_counters };
+	*res_automata = automata;
+
+	return TRUE;
 }
 
 // num must be >= 0
@@ -63,14 +68,14 @@ int add_node (Automata * automata, int success, int nb_arrows_capacity) {
 		sizeof(Node), (void **) &automata->nodes);
 
 	if (success_adapt) {
+
+		Arrow * arrows = malloc (nb_arrows_capacity * sizeof(Arrow));
+		// no node added if malloc problem
+		if (arrows == NULL && nb_arrows_capacity > 0) { return BAD_NUM; }
+
 		int num_node = automata->nb_nodes ++;
 
-		Node node;
-		node.num = num_node;
-		node.success = success;
-		node.nb_arrows = 0;
-		node.nb_arrows_capacity = nb_arrows_capacity;
-		node.arrows = malloc (nb_arrows_capacity * sizeof(Arrow));
+		Node node = { num_node, success, 0, nb_arrows_capacity, arrows };
 
 		automata->nodes[num_node] = node;
 
@@ -80,8 +85,8 @@ int add_node (Automata * automata, int success, int nb_arrows_capacity) {
 }
 
 int add_arrow (
-	Automata * automata, int num_node, int label, int epsilon,
-	int dest, int nb_counters_actions_capacity
+	Automata * automata, int num_node, int label, int label_max, int epsilon, int dest,
+	int nb_counters_actions_capacity
 ) {
 
 	Node * node = &automata->nodes[num_node];
@@ -90,15 +95,16 @@ int add_arrow (
 		node->nb_arrows + 1, &node->nb_arrows_capacity, sizeof(Arrow), (void **) &node->arrows);
 
 	if (success_adapt) {
+
+		Counter_Action * counters_actions =
+			malloc (nb_counters_actions_capacity * sizeof(Counter_Action));
+		// no arrow added if malloc problem
+		if (counters_actions == NULL && nb_counters_actions_capacity > 0) { return BAD_NUM; }
+
 		int num_arrow = node->nb_arrows ++;
 
-		Arrow arrow;
-		arrow.label = label;
-		arrow.epsilon = epsilon;
-		arrow.dest = dest;
-		arrow.nb_counters_actions = 0;
-		arrow.nb_counters_actions_capacity = nb_counters_actions_capacity;
-		arrow.counters_actions = malloc (nb_counters_actions_capacity * sizeof(Counter_Action));
+		Arrow arrow = {
+			label, label_max, epsilon, dest, 0, nb_counters_actions_capacity, counters_actions };
 
 		node->arrows[num_arrow] = arrow;
 
@@ -110,13 +116,21 @@ int add_arrow (
 int add_label_arrow (
 	Automata * automata, int num_node, int label, int dest, int nb_counters_actions_capacity
 ) {
-	return add_arrow(automata, num_node, label, FALSE, dest, nb_counters_actions_capacity);
+	return add_arrow(automata, num_node, label, label, FALSE, dest, nb_counters_actions_capacity);
 }
 
 int add_epsilon_arrow (
 	Automata * automata, int num_node, int dest, int nb_counters_actions_capacity
 ) {
-	return add_arrow(automata, num_node, 0, TRUE, dest, nb_counters_actions_capacity);
+	return add_arrow(automata, num_node, 0, 0, TRUE, dest, nb_counters_actions_capacity);
+}
+
+int add_interval_arrow (
+	Automata * automata, int num_node, int label, int label_max,
+	int dest, int nb_counters_actions_capacity
+) {
+	return add_arrow(
+		automata, num_node, label, label_max, FALSE, dest, nb_counters_actions_capacity);
 }
 
 int add_counter_action (
@@ -249,7 +263,9 @@ void explore_step (Exploration * expl, Automata automata, int * labels, int nb_l
 	if (has_next_label) next_label = labels[point.nb_labels_used];
 
 	// either the next label is the same of the arrow, either the arrow is epsilon
-	if ((has_next_label && next_label == arrow.label) || arrow.epsilon) {
+	if (                 // we handle interval arrows and label arrows in the same way
+		(has_next_label && next_label >= arrow.label && next_label <= arrow.label_max)
+		|| (arrow.epsilon)) {
 
 		int * counters = &expl->counters[num_point * expl->nb_counters_by_point];
 
@@ -344,7 +360,8 @@ char * automata_to_string (Automata automata) {
 
 			if (arrow.epsilon) { append(&builder, "--EPS-->"); }
 			else {
-				sprintf(buffer, "--%i-->", arrow.label);
+				if (arrow.label == arrow.label_max) { sprintf(buffer, "--%i-->", arrow.label); }
+				else { sprintf(buffer, "--[%i-%i]-->", arrow.label, arrow.label_max); }
 				append(&builder, buffer);
 			}
 
@@ -407,7 +424,8 @@ char * automata_to_dot (Automata automata) {
 			if (hasDotLabel) append(&builder, " [label=\"");
 
 			if (! arrow.epsilon) {
-				sprintf(buffer, "%i", arrow.label);
+				if (arrow.label == arrow.label_max) { sprintf(buffer, "%i", arrow.label); }
+				else { sprintf(buffer, "[%i-%i]", arrow.label, arrow.label_max); }
 				append(&builder, buffer);
 			}
 
