@@ -1,5 +1,7 @@
 enum { FALSE = 0, TRUE = 1 }; // used only for assignment
 
+enum { BAD_NUM = -1 }; // used as error value for array index values
+
 int max_int (int a, int b);
 
 // adapt capacity of a stack

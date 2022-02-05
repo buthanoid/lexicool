@@ -1,8 +1,6 @@
 // constants for counter actions
 enum { ACTION_SET, ACTION_ADD, ACTION_AT_LEAST, ACTION_AT_MOST };
 
-enum { BAD_NUM = -1 };
-
 typedef struct Automata Automata;
 typedef struct Node Node;
 typedef struct Arrow Arrow;
@@ -54,7 +52,6 @@ struct Automata {
 };
 
 struct Node {
-	int num;
 	int success; // boolean
 
 	int nb_arrows; // number of arrows of the node
@@ -65,7 +62,7 @@ struct Node {
 struct Arrow {
 	int label; // which letter must be read to follow the arrow
 	int label_max; // for labels interval: [label-label_max]. disabled by label_max == label
-	int epsilon; // boolean true for epsilon arrows, false otherwise
+	int epsilon; // boolean TRUE for epsilon arrows, FALSE otherwise
 	int dest; // the node that is pointed by the arrow. index in the nodes array
 
 	int nb_counters_actions;

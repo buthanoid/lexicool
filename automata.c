@@ -73,11 +73,10 @@ int add_node (Automata * automata, int success, int nb_arrows_capacity) {
 		// no node added if malloc problem
 		if (arrows == NULL && nb_arrows_capacity > 0) { return BAD_NUM; }
 
-		int num_node = automata->nb_nodes ++;
-
-		Node node = { num_node, success, 0, nb_arrows_capacity, arrows };
-
+		Node node = { success, 0, nb_arrows_capacity, arrows };
+		int num_node = automata->nb_nodes;
 		automata->nodes[num_node] = node;
+		automata->nb_nodes ++;
 
 		return num_node;
 	}
@@ -349,13 +348,14 @@ char * automata_to_string (Automata automata) {
 	sprintf(buffer, "automata %i nodes %i counters\n", automata.nb_nodes, automata.nb_counters);
 	append(&builder, buffer);
 
-	for (int i = 0; i < automata.nb_nodes; i ++) {
-		Node node = automata.nodes[i];
+	for (int num_node = 0; num_node < automata.nb_nodes; num_node ++) {
+		Node node = automata.nodes[num_node];
+
 		for (int j = 0; j < node.nb_arrows; j++) {
 			Arrow arrow = node.arrows[j];
 
-			if (node.success) { sprintf(buffer, "((%i))", node.num); }
-			else { sprintf(buffer, "(%i)", node.num); }
+			if (node.success) { sprintf(buffer, "((%i))", num_node); }
+			else { sprintf(buffer, "(%i)", num_node); }
 			append(&builder, buffer);
 
 			if (arrow.epsilon) { append(&builder, "--EPS-->"); }
@@ -366,8 +366,8 @@ char * automata_to_string (Automata automata) {
 			}
 
 			Node dest_node = automata.nodes[arrow.dest];
-			if (dest_node.success) { sprintf(buffer, "((%i))", dest_node.num); }
-			else { sprintf(buffer, "(%i)", dest_node.num); }
+			if (dest_node.success) { sprintf(buffer, "((%i))", arrow.dest); }
+			else { sprintf(buffer, "(%i)", arrow.dest); }
 			append(&builder, buffer);
 
 			for (int k = 0; k < arrow.nb_counters_actions; k ++) {
@@ -406,17 +406,17 @@ char * automata_to_dot (Automata automata) {
 
 	append(&builder, "digraph automata {\n\n");
 
-	for (int i = 0; i < automata.nb_nodes; i ++) {
-		Node node = automata.nodes[i];
+	for (int num_node = 0; num_node < automata.nb_nodes; num_node ++) {
+		Node node = automata.nodes[num_node];
 
 		sprintf(buffer, "node%i [label=\"%i\"%s];\n",
-			node.num, node.num, node.success ? ", peripheries=2" : "");
+			num_node, num_node, node.success ? ", peripheries=2" : "");
 		append(&builder, buffer);
 
 		for (int j = 0; j < node.nb_arrows; j++) {
 			Arrow arrow = node.arrows[j];
 
-			sprintf(buffer, "node%i -> node%i", node.num, arrow.dest);
+			sprintf(buffer, "node%i -> node%i", num_node, arrow.dest);
 			append(&builder, buffer);
 
 			int hasDotLabel = (! arrow.epsilon) || arrow.nb_counters_actions > 0;

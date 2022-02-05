@@ -3,32 +3,7 @@
 
 #include "util.h"
 #include "automata.h"
-
-enum { MAX_INF = -1 };
-
-typedef enum Tag_Regex Tag_Regex;
-typedef struct Regex Regex;
-
-enum Tag_Regex {
-    REGEX_CHARACTER, // exactly one character
-    REGEX_EPSILON, // no character at all
-    REGEX_SEQUENCE, // a first subregex, then a second subregex concatened
-    REGEX_BRANCH, // either the first subregex, or the second subregex
-    REGEX_REPEAT, // the subregex repeated from (0 or n) times to (0 or n or infinite) times
-    REGEX_INTERVAL // exactly one character within an interval on the total order of characters
-};
-
-// this struct is used as a tagged union, with the tag being tag_regex
-// I prefered a small memory overhead rather than the union complexity
-struct Regex {
-    Tag_Regex tag_regex; // used by all REGEX
-
-    int character; // used by REGEX_CHARACTER
-    Regex * one; // used by REGEX_SEQUENCE, REGEX_BRANCH, REGEX_REPEAT
-    Regex * two; // used by REGEX_SEQUENCE, REGEX_BRANCH
-    int min; // used by REGEX_REPEAT, REGEX_INTERVAL
-    int max; // used by REGEX_REPEAT, REGEX_INTERVAL
-};
+#include "regex.h"
 
 // some US-ASCII regex
 Regex ascii_digit = { REGEX_INTERVAL, 0, NULL, NULL, 48, 57 };
@@ -36,28 +11,21 @@ Regex ascii_letter_small = { REGEX_INTERVAL, 0, NULL, NULL, 97, 122 };
 Regex ascii_letter_cap = { REGEX_INTERVAL, 0, NULL, NULL, 65, 90 };
 Regex ascii_letter_all = { REGEX_BRANCH, 0, &ascii_letter_small, &ascii_letter_cap, 0, 0 };
 
-Automata regex_to_automata (Regex regex);
-void aux_length_regex_to_automata (Regex regex, int * nb_nodes, int * nb_counters);
-int aux_regex_to_automata (
-    Regex regex, Automata * automata, int start_node, int * nb_counters);
-
-char * regex_to_string (Regex regex);
-
-int main (int argc, char ** argv) {
+/*int main (int argc, char ** argv) {
 
     Regex regex1;
-    regex1.tag_regex = REGEX_REPEAT;
+    regex1.type = REGEX_REPEAT;
     regex1.min = 2;
     regex1.max = 2;
     regex1.one = &ascii_letter_all;
 
     Regex regex2;
-    regex2.tag_regex = REGEX_SEQUENCE;
+    regex2.type = REGEX_SEQUENCE;
     regex2.one = &regex1;
     regex2.two = &ascii_digit;
 
     Regex regex3;
-    regex3.tag_regex = REGEX_REPEAT;
+    regex3.type = REGEX_REPEAT;
     regex3.min = 1;
     regex3.max = MAX_INF;
     regex3.one = &regex2;
@@ -95,8 +63,10 @@ int main (int argc, char ** argv) {
 
     free(res_counters);
     free_automata(automata);
-}
+}*/
 
+void aux_length_regex_to_automata (Regex regex, int * nb_nodes, int * nb_counters);
+int aux_regex_to_automata (Regex regex, Automata * automata, int start_node, int * nb_counters);
 
 Automata regex_to_automata (Regex regex) {
 
@@ -115,7 +85,7 @@ Automata regex_to_automata (Regex regex) {
 }
 
 void aux_length_regex_to_automata (Regex regex, int * nb_nodes, int * nb_counters) {
-    switch (regex.tag_regex) {
+    switch (regex.type) {
         case REGEX_EPSILON:
         case REGEX_CHARACTER:
         case REGEX_INTERVAL:
@@ -127,7 +97,7 @@ void aux_length_regex_to_automata (Regex regex, int * nb_nodes, int * nb_counter
         case REGEX_BRANCH:
             aux_length_regex_to_automata(*regex.one, nb_nodes, nb_counters);
             aux_length_regex_to_automata(*regex.two, nb_nodes, nb_counters);
-            if (regex.tag_regex == REGEX_SEQUENCE) (*nb_nodes) --;
+            if (regex.type == REGEX_SEQUENCE) (*nb_nodes) --;
         break;
         case REGEX_REPEAT:
             (*nb_counters) ++;
@@ -144,7 +114,7 @@ int aux_regex_to_automata (
     int node_one, node_two, node_three;
     int arrow;
     int num_counter;
-    switch (regex.tag_regex) {
+    switch (regex.type) {
         case REGEX_EPSILON:
             end_node = add_node(automata, TRUE, 2);
             add_epsilon_arrow(automata, start_node, end_node, 0);
@@ -215,7 +185,7 @@ int aux_regex_to_automata (
 
 void aux_regex_to_string (Regex regex, String_Builder * builder) {
     char buffer [100];
-    switch (regex.tag_regex) {
+    switch (regex.type) {
         case REGEX_EPSILON:
             append(builder, "EPS");
         break;
