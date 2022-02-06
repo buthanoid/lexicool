@@ -51,13 +51,15 @@ int read_complete_file (const char filepath[], int * res_nb_chars, int ** res_ch
     }
 }
 
+enum { SIZE_TOKEN_NAME = 32 };
+
 typedef struct Token_Desc Token_Desc;
 
 struct Token_Desc {
     int type; // one of TOKEN_NORMAL, TOKEN_NO_DATA, TOKEN_THROW
-    char name[32]; // name of the token
+    char name[SIZE_TOKEN_NAME]; // name of the token
     Regex * regex; // regex describing the token (can be NULL when automata is known)
-    Automata automata; // automata describing the token (may be empty then computed from regex)
+    Automata automata; // automata describing the token (may be NULL then computed from regex)
 };
 
 enum {
@@ -67,8 +69,6 @@ enum {
 };
 
 typedef struct Token Token;
-
-enum { SIZE_TOKEN_NAME = 32 };
 
 struct Token {
     char name[SIZE_TOKEN_NAME]; // name of the token
@@ -117,38 +117,32 @@ int find_token (Lexicon_Desc lexicon_desc, int nb_characs, int * characs,
     int result = NOT_FOUND_TOKEN;
     Token token;
     Token_Desc token_desc;
-    int nb_characs_used, num_node, nb_explorations_steps, max_nb_points_reached;
-    int * counters = NULL;
+    int nb_characs_used, num_node;
 
     // search first matching token (there is a break)
     for (int i = 0; i < lexicon_desc.nb_token_descs; i ++) {
         token_desc = lexicon_desc.token_descs[i];
 
-        counters = malloc(token_desc.automata.nb_counters * sizeof(int));
-
         explore_farthest_success_node(
             token_desc.automata, 0, characs, nb_characs,
-            &num_node, &nb_characs_used, counters,
-            &nb_explorations_steps, &max_nb_points_reached);
-
-        free(counters);
+            &num_node, &nb_characs_used, NULL, NULL, NULL);
 
         if (num_node != BAD_NUM && token_desc.automata.nodes[num_node].success) {
             switch (token_desc.type) {
                 case TOKEN_NORMAL:
                     result = FOUND_TOKEN;
                     for (int j = 0; j < SIZE_TOKEN_NAME; j ++) {
-                        token.name[i] = token_desc.name[i];
+                        token.name[j] = token_desc.name[j];
                     }
                     token.nb_characs = nb_characs_used;
                     token.characs = malloc(nb_characs_used * sizeof(int));
-                    for (int j = 0; j < nb_characs_used; j ++) { token.characs[i] = characs[i]; }
+                    for (int j = 0; j < nb_characs_used; j ++) { token.characs[j] = characs[j]; }
                     *res_token = token;
                 break;
                 case TOKEN_NO_DATA:
                     result = FOUND_TOKEN;
                     for (int j = 0; j < SIZE_TOKEN_NAME; j ++) {
-                        token.name[i] = token_desc.name[i];
+                        token.name[j] = token_desc.name[j];
                     }
                     token.nb_characs = 0;
                     token.characs = NULL;
@@ -159,7 +153,7 @@ int find_token (Lexicon_Desc lexicon_desc, int nb_characs, int * characs,
                 break;
             }
             *res_nb_characs_used = nb_characs_used;
-            break;
+            break; // exit the for loop
         }
     }
 
@@ -170,18 +164,65 @@ int main (int argc, char ** argv) {
 
     char filepath[] = "./source.txt";
 
-    int nb_chars;
-    int * chars;
-    int success_read = read_complete_file (filepath, &nb_chars, &chars);
+    int nb_characs;
+    int * characs = NULL;
+    int success_read = read_complete_file (filepath, &nb_characs, &characs);
 
     if (success_read) {
-        printf("nb of characters in file is %i.\n", nb_chars);
-        free(chars);
-        return EXIT_SUCCESS;
+        printf("nb of characs in file is %i.\n", nb_characs);
+        for (int i = 0; i < nb_characs; i ++) printf("%i ", characs[i]);
+        if (nb_characs > 0) printf("\n");
     }
-    else {
-        printf("problem reading the file.\n");
-        return EXIT_FAILURE;
+    else printf("problem reading the file.\n");
+
+    Regex regex1;
+    regex1.type = REGEX_REPEAT;
+    regex1.min = 2;
+    regex1.max = 2;
+    regex1.one = &ascii_digit;
+
+    Regex regex2;
+    regex2.type = REGEX_SEQUENCE;
+    regex2.one = &regex1;
+    regex2.two = &ascii_letter_all;
+
+    Automata automata0 = regex_to_automata(regex2);
+    Token_Desc token_desc0 = { TOKEN_NORMAL, "2digits1letter", &regex2, automata0 };
+
+    Automata automata1 = regex_to_automata(ascii_digit);
+    Token_Desc token_desc1 = { TOKEN_NORMAL, "digit", &ascii_digit, automata1 };
+
+    Lexicon_Desc lexicon_desc = new_lexicon_desc();
+    add_token_desc(&lexicon_desc, token_desc0);
+    add_token_desc(&lexicon_desc, token_desc1);
+
+    Token token;
+    int nb_characs_used, result_find;
+    result_find = find_token (lexicon_desc, nb_characs, characs, &token, &nb_characs_used);
+
+    switch (result_find) {
+        case FOUND_TOKEN:
+            if (token.nb_characs == 0) printf("found token %s\n", token.name);
+            else {
+                printf("found token %s(", token.name);
+                for (int i = 0; i < token.nb_characs; i ++) printf("%i ", token.characs[i]);
+                printf(")\n");
+                free(token.characs);
+            }
+        break;
+        case FOUND_TOKEN_THROWN:
+            printf("found token %s thrown\n", token.name);
+        break;
+        case NOT_FOUND_TOKEN:
+            printf("not found token\n");
+        break;
     }
+
+    free(characs);
+    free_automata(automata0);
+    free_automata(automata1);
+    free_lexicon_desc(lexicon_desc);
+
+    return success_read ? EXIT_SUCCESS : EXIT_FAILURE;
 
 }

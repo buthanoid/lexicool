@@ -287,12 +287,10 @@ void explore_farthest_success_node (
 	int * res_num_node, int * res_nb_labels_used, int * res_counters,
 	int * res_nb_explorations_steps, int * res_max_nb_points_reached
 ) {
-	// init result values
-	*res_num_node = BAD_NUM;
-	*res_nb_labels_used = 0;
-	for (int i = 0; i < automata.nb_counters; i ++) res_counters[i] = 0;
-	*res_nb_explorations_steps = 0;
-	*res_max_nb_points_reached = 0;
+	// result values and stats
+	int num_node_success = BAD_NUM, nb_labels_used = 0;
+	int * counters = malloc(automata.nb_counters * sizeof(int));
+	int nb_explorations_steps = 0, max_nb_points_reached = 0;
 
 	Exploration expl = { 0, 0, NULL, automata.nb_counters, 0, 0, NULL };
 
@@ -303,25 +301,35 @@ void explore_farthest_success_node (
 		Point point = expl.points[num_point];
 
 		if (automata.nodes[point.num_node].success) {
-			if (point.nb_labels_used > *res_nb_labels_used || *res_num_node == BAD_NUM) {
+			if (point.nb_labels_used > nb_labels_used || num_node_success == BAD_NUM) {
 
-				*res_num_node = point.num_node;
-				*res_nb_labels_used = point.nb_labels_used;
+				num_node_success = point.num_node;
+				nb_labels_used = point.nb_labels_used;
 
 				int start_counter = num_point * expl.nb_counters_by_point;
 				for (int i = 0; i < automata.nb_counters; i ++) {
-					res_counters[i] = expl.counters[start_counter + i];
+					counters[i] = expl.counters[start_counter + i];
 				}
 			}
 		}
 
-		*res_max_nb_points_reached = max_int(*res_max_nb_points_reached, expl.nb_points);
+		max_nb_points_reached = max_int(max_nb_points_reached, expl.nb_points);
 
 		explore_step(&expl, automata, labels, nb_labels);
-		(*res_nb_explorations_steps) ++;
+		nb_explorations_steps ++;
 	}
 
+	// setting the results and stats (only when pointer is not NULL)
+	if (res_num_node != NULL) *res_num_node = num_node_success;
+	if (res_nb_labels_used != NULL) *res_nb_labels_used = nb_labels_used;
+	if (res_counters != NULL) {
+		for (int i = 0; i < automata.nb_counters; i ++) res_counters[i] = counters[i];
+	}
+	if (res_nb_explorations_steps != NULL) *res_nb_explorations_steps = nb_explorations_steps;
+	if (res_max_nb_points_reached != NULL) *res_max_nb_points_reached = max_nb_points_reached;
+
 	free_exploration(expl);
+	free(counters);
 }
 
 void free_exploration (Exploration expl) {
